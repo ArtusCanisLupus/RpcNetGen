@@ -1,0 +1,603 @@
+using TUVienna.CS_CUP.Runtime;
+using System.Collections;
+using System.Text;
+using System;
+
+parser code {:
+    public void ReportError(string message, object info)
+    {
+        var msg = new StringBuilder("CsRpcGen: error");
+        if (info is Symbol symbol)
+        {
+            msg.Append(" in line ");
+            msg.Append(symbol.left);
+        }
+
+        msg.Append(": ");
+        msg.Append(message);
+        Console.WriteLine(msg);
+        throw new ParserException();
+    }
+
+    public void ReportError(string message, int line)
+    {
+        var msg = new StringBuilder("CsRpcGen: error in line ");
+        msg.Append(line);
+        msg.Append(": ");
+        msg.Append(message);
+        Console.WriteLine(msg);
+        throw new ParserException();
+    }
+
+    public void SyntaxError(Symbol cur_token)
+    {
+        var msg = new StringBuilder("CsRpcGen: syntax error in line ");
+        msg.Append(cur_token.left);
+        Console.WriteLine(msg);
+        throw new ParserException();
+    }
+
+    public void ReportFatalError(string message, object info)
+    {
+        ReportError(message, info);
+        throw new ParserException("Fatal Syntax Error");
+    }
+:};
+
+terminal SEMICOLON;                     // ";"
+terminal COMMA;                         // ","
+terminal COLON;                         // ":"
+terminal EQUAL;                         // "="
+terminal STAR;                          // "*"
+terminal LPAREN, RPAREN;                // "(" ")"
+terminal LBRACE, RBRACE;                // "{" "}"
+terminal LBRACKET, RBRACKET;            // "[" "]"
+terminal LANGLE, RANGLE;                // "<" ">"
+
+terminal PROGRAM;                       // "PROGRAM" "program"
+terminal VERSION;                       // "VERSION" "version"
+terminal CONST;                         // "const"
+terminal TYPEDEF;                       // "typedef"
+terminal SWITCH;                        // "switch"
+terminal CASE;                          // "case"
+terminal DEFAULT;                       // "default"
+
+terminal VOID;                          // "void"
+terminal CHAR;                          // "char"
+terminal SHORT;                         // "short"
+terminal USHORT;                        // "ushort"
+terminal INT;                           // "int"
+terminal UINT;                          // "uint"
+terminal LONG;                          // "long"
+terminal ULONG;                         // "ulong"
+terminal HYPER;                         // "hyper"
+terminal UHYPER;                        // "uhyper"
+terminal FLOAT;                         // "float"
+terminal DOUBLE;                        // "double"
+terminal QUADRUPLE;                     // "quadruple"
+terminal BOOL;                          // "bool"
+terminal ENUM;                          // "enum"
+terminal OPAQUE;                        // "opaque"
+terminal STRING;                        // "string"
+terminal STRUCT;                        // "struct"
+terminal UNION;                         // "union"
+terminal UNSIGNED;                      // "unsigned"
+
+terminal string INTEGER_LITERAL;
+terminal string IDENTIFIER;
+
+non terminal compilation_unit;
+non terminal definitions_opt, definitions, definition;
+
+non terminal                      constant_def;
+
+non terminal                      enum_def;
+non terminal ArrayList            enum_elements;
+non terminal ParsedConst          enum_element;
+
+non terminal                      struct_def;
+
+non terminal                      union_def;
+non terminal ArrayList            union_cases;
+non terminal ParsedUnionArm       union_case;
+
+non terminal                      typedef_def;
+
+non terminal ArrayList            program_defs;
+non terminal                      program_defs_opt;
+non terminal ParsedProgramInfo    program_def;
+non terminal ArrayList            version_defs;
+non terminal ParsedVersionInfo    version_def;
+non terminal ArrayList            procedure_defs;
+non terminal ParsedProcedureInfo  procedure_def;
+
+non terminal ArrayList            argument_list;
+non terminal ArrayList            argument_list_no_void;
+
+non terminal string               type_specifier_incl_specials;
+non terminal string               type_specifier_incl_string;
+non terminal string               type_specifier;
+
+non terminal ArrayList            declarations;
+non terminal ParsedDeclaration    declaration;
+
+non terminal string               int_types;
+non terminal string               value;
+
+start with compilation_unit;
+
+compilation_unit ::=
+    definitions_opt program_defs_opt
+    ;
+
+program_defs_opt ::=
+    // Empty
+        {:
+            CsRpcGen.SetProgramInfos(new ArrayList());
+        :}
+    |
+    program_defs:progDefs
+        {:
+            CsRpcGen.SetProgramInfos(progDefs);
+        :}
+    ;
+
+program_defs ::=
+    program_def:progDef
+        {:
+            RESULT = new ArrayList();
+            RESULT.Add(progDef);
+        :}
+    |
+    program_defs:progDefs program_def:progDef
+        {:
+            progDefs.Add(progDef);
+            RESULT = progDefs;
+        :}
+    ;
+
+definitions_opt ::=
+    // Empty
+    |
+    definitions
+    ;
+
+definitions ::=
+    definition
+    |
+    definitions definition
+    ;
+
+definition ::=
+    constant_def | enum_def | struct_def | union_def | typedef_def
+    ;
+
+constant_def ::=
+    CONST IDENTIFIER:id EQUAL value:value SEMICOLON
+        {:
+            ParsedConst type = new ParsedConst(id, value, CsRpcGen.baseClassname);
+            CsRpcGen.AddElement(id, type);
+        :}
+    ;
+
+enum_def ::=
+    ENUM IDENTIFIER:id LBRACE enum_elements:elements RBRACE SEMICOLON
+        {:
+            // Fix up enclosure of enumeration elements, so we can later use a full qualified identifier
+            int size = elements.Count;
+            for (int idx = 0; idx < size; idx++)
+            {
+                ParsedConst c = (ParsedConst)elements[idx];
+                c.Enclosure = id;
+            }
+
+            var type = new ParsedEnum(id, elements);
+            CsRpcGen.AddElement(id, type);
+        :}
+    ;
+
+enum_elements ::=
+    enum_element:el
+        {:
+            // If no specific value has been assigned to this element of an enumeration, assign zero by default
+            if (el.Value == null)
+            {
+                el.Value = "0";
+            }
+            RESULT = new ArrayList();
+            RESULT.Add(el);
+        :}
+    |
+    enum_elements:elements COMMA enum_element:el
+        {:
+            // If no specific value has been assigned to this element of
+            // an enumeration, increment value of previous element and
+            // assign the new value to this element. BTW -- we let the
+            // C# compiler do the calculation, so references to
+            // other constants by name are valid
+            if (el.Value == null)
+            {
+                el.Value = ((ParsedConst)elements[elements.Count - 1]).Value + "+1";
+            }
+            elements.Add(el);
+            RESULT = elements;
+        :}
+    ;
+
+enum_element ::=
+    IDENTIFIER:id
+        {:
+            RESULT = new ParsedConst(id, null);
+            CsRpcGen.AddElement(id, RESULT);
+        :}
+    |
+    IDENTIFIER:id EQUAL value:val
+        {:
+            RESULT = new ParsedConst(id, val);
+            CsRpcGen.AddElement(id, RESULT);
+        :}
+    ;
+
+struct_def ::=
+    STRUCT IDENTIFIER:id LBRACE declarations:elements RBRACE SEMICOLON
+        {:
+            var @struct = new ParsedStruct(id, elements);
+            CsRpcGen.AddElement(id, @struct);
+        :}
+    ;
+
+union_def ::=
+    UNION IDENTIFIER:id SWITCH LPAREN declaration:descrim RPAREN LBRACE union_cases:elements RBRACE SEMICOLON
+        {:
+            var uni = new ParsedUnion(id, descrim, elements);
+            CsRpcGen.AddElement(id, uni);
+        :}
+    ;
+
+union_cases ::=
+    union_case:arm
+        {:
+            RESULT = new ArrayList();
+            RESULT.Add(arm);
+        :}
+    |
+    union_cases:arms union_case:arm
+        {:
+            arms.Add(arm);
+            RESULT = arms;
+        :}
+    ;
+
+union_case ::=
+    CASE value:val COLON
+        {:
+            RESULT = new ParsedUnionArm(val, null);
+        :}
+    |
+    CASE value:val COLON declaration:element SEMICOLON
+        {:
+            RESULT = new ParsedUnionArm(val, element);
+        :}
+    |
+    DEFAULT COLON declaration:element SEMICOLON
+        {:
+            RESULT = new ParsedUnionArm(null, element);
+        :}
+    ;
+
+typedef_def ::=
+    TYPEDEF declaration:decl SEMICOLON
+        {:
+            CsRpcGen.AddElement(decl.Identifier, decl);
+        :}
+    ;
+
+program_def ::=
+    PROGRAM IDENTIFIER:progId LBRACE version_defs:versions RBRACE EQUAL value:progNumber SEMICOLON
+        {:
+            var prog = new ParsedConst(progId, progNumber, CsRpcGen.baseClassname);
+            RESULT = new ParsedProgramInfo(progId, progNumber, versions);
+            CsRpcGen.AddElement(progId, prog);
+        :}
+    ;
+
+version_defs ::=
+    version_def:version
+        {:
+            RESULT = new ArrayList();
+            RESULT.Add(version);
+        :}
+    |
+    version_defs:versions version_def:version
+        {:
+            versions.Add(version);
+            RESULT = versions;
+        :}
+    ;
+
+version_def ::=
+    VERSION IDENTIFIER:versId LBRACE procedure_defs:procs RBRACE EQUAL value:versNumber SEMICOLON
+        {:
+            var vers = new ParsedConst(versId, versNumber, CsRpcGen.baseClassname);
+            RESULT = new ParsedVersionInfo(versId, versNumber, procs);
+            CsRpcGen.AddElement(versId, vers);
+            versNumber = vers.ResolveValue();
+            if (versNumber == null)
+            {
+                my_parser.ReportError("Can not resolve version identifier \"" + versId + "\" to integer literal", versNumberleft);
+            }
+
+            // We also need to fix up the procedure identifiers by appending the version number
+            int size = procs.Count;
+            for (int idx = 0; idx < size; idx++)
+            {
+                var procInfo = (ParsedProcedureInfo)procs[idx];
+                procInfo.ProcedureId += "_" + versNumber;
+                var proc = new ParsedConst(procInfo.ProcedureId, procInfo.ProcedureNumber, CsRpcGen.baseClassname);
+                CsRpcGen.AddElement(procInfo.ProcedureId, proc);
+            }
+        :}
+    ;
+
+procedure_defs ::=
+    procedure_def:proc
+        {:
+            RESULT = new ArrayList();
+            RESULT.Add(proc);
+        :}
+    |
+    procedure_defs:procs procedure_def:proc
+        {:
+            procs.Add(proc);
+            RESULT = procs;
+        :}
+    ;
+
+procedure_def ::=
+    type_specifier_incl_specials:resultType IDENTIFIER:procId LPAREN argument_list:args RPAREN EQUAL value:procNumber SEMICOLON
+        {:
+            RESULT = new ParsedProcedureInfo(procId, procNumber, resultType, args);
+        :}
+    ;
+
+argument_list ::=
+    // Empty
+        {:
+            RESULT = null;
+        :}
+    |
+    VOID
+        {:
+            RESULT = null;
+        :}
+    |
+    argument_list_no_void:args
+        {:
+            RESULT = args; // just pass through
+            int size = RESULT.Count;
+            // All arguments, which are unnamed so far will now get default names.
+            for (int idx = 0; idx < size; idx++)
+            {
+                var paraminfo = (ParsedDeclaration)RESULT[idx];
+                if (paraminfo.Identifier == null)
+                {
+                    paraminfo.Identifier = "arg" + (idx + 1);
+                }
+            }
+        :}
+    ;
+
+argument_list_no_void ::=
+    type_specifier_incl_string:paramType
+        {:
+            RESULT = new ArrayList();
+            RESULT.Add(new ParsedDeclaration(null, paramType));
+        :}
+    |
+    type_specifier_incl_string:paramType IDENTIFIER:paramName
+        {:
+            RESULT = new ArrayList();
+            RESULT.Add(new ParsedDeclaration(paramName, paramType));
+        :}
+    |
+    argument_list:args COMMA type_specifier_incl_string:paramType
+        {:
+            RESULT = args;
+            RESULT.Add(new ParsedDeclaration(null, paramType));
+        :}
+    |
+    argument_list:args COMMA type_specifier_incl_string:paramType IDENTIFIER:paramName
+        {:
+            RESULT = args;
+            RESULT.Add(new ParsedDeclaration(paramName, paramType));
+        :}
+    ;
+
+type_specifier_incl_specials ::=
+    VOID
+        {: RESULT = "void"; :}
+    |
+    type_specifier_incl_string:type
+        {: RESULT = type; :}
+    ;
+
+type_specifier_incl_string ::=
+    STRING
+        {: RESULT = "string"; :}
+    |
+    type_specifier:type
+        {: RESULT = type; :}
+    |
+    IDENTIFIER:id STAR
+        {: RESULT = id; :}
+    ;
+
+type_specifier ::=
+    IDENTIFIER:id
+        {: RESULT = id; :}
+    |
+    BOOL
+        {: RESULT = "bool"; :}
+    |
+    int_types:type
+        {: RESULT = type; :}
+    |
+    FLOAT
+        {: RESULT = "float"; :}
+    |
+    DOUBLE
+        {: RESULT = "double"; :}
+    |
+    QUADRUPLE
+        {: throw new NotSupportedException("Quadruple is not supported yet."); :}
+    |
+    ENUM IDENTIFIER:id
+        {: RESULT = id; :}
+    |
+    STRUCT IDENTIFIER:id
+        {: RESULT = id; :}
+    |
+    UNION IDENTIFIER:id
+        {: RESULT = id; :}
+    ;
+
+declarations ::=
+    declaration:decl SEMICOLON
+        {:
+            RESULT = new ArrayList();
+            RESULT.Add(decl);
+        :}
+    |
+    declarations:decls declaration:decl SEMICOLON
+        {:
+            decls.Add(decl);
+            RESULT = decls;
+        :}
+    ;
+
+declaration ::=
+    OPAQUE IDENTIFIER:id LBRACKET value:size RBRACKET
+        {:
+            RESULT = new ParsedDeclaration(id, "opaque", DeclarationType.FixedVector, size);
+        :}
+    |
+    OPAQUE IDENTIFIER:id LANGLE value:size RANGLE
+        {:
+            RESULT = new ParsedDeclaration(id, "opaque", DeclarationType.DynamicVector, size);
+        :}
+    |
+    OPAQUE IDENTIFIER:id LANGLE RANGLE
+        {:
+            RESULT = new ParsedDeclaration(id, "opaque", DeclarationType.DynamicVector);
+        :}
+    |
+    STRING IDENTIFIER:id LANGLE value:size RANGLE
+        {:
+            RESULT = new ParsedDeclaration(id, "string", DeclarationType.DynamicVector, size);
+        :}
+    |
+    STRING IDENTIFIER:id LANGLE RANGLE
+        {:
+            RESULT = new ParsedDeclaration(id, "string", DeclarationType.DynamicVector);
+        :}
+    |
+    type_specifier:type IDENTIFIER:id
+        {:
+            RESULT = new ParsedDeclaration(id, type);
+        :}
+    |
+    type_specifier:type IDENTIFIER:id LBRACKET value:size RBRACKET
+        {:
+            RESULT = new ParsedDeclaration(id, type, DeclarationType.FixedVector, size);
+        :}
+    |
+    type_specifier:type IDENTIFIER:id LANGLE value:size RANGLE
+        {:
+            RESULT = new ParsedDeclaration(id, type, DeclarationType.DynamicVector, size);
+        :}
+    |
+    type_specifier:type IDENTIFIER:id LANGLE RANGLE
+        {:
+            RESULT = new ParsedDeclaration(id, type, DeclarationType.DynamicVector);
+        :}
+    |
+    type_specifier:type STAR IDENTIFIER:id
+        {:
+            RESULT = new ParsedDeclaration(id, type, DeclarationType.Indirection);
+        :}
+    |
+    VOID
+        {:
+            RESULT = new ParsedDeclaration(null, "void");
+        :}
+    ;
+
+int_types ::=
+    SHORT
+        {: RESULT = "short"; :}
+    |
+    SHORT INT
+        {: RESULT = "short"; :}
+    |
+    USHORT
+        {: RESULT = "ushort"; :}
+    |
+    UNSIGNED SHORT
+        {: RESULT = "ushort"; :}
+    |
+    UNSIGNED SHORT INT
+        {: RESULT = "ushort"; :}
+    |
+    CHAR
+        {: RESULT = "byte"; :}
+    |
+    INT
+        {: RESULT = "int"; :}
+    |
+    LONG INT
+        {: RESULT = "int"; :}
+    |
+    LONG
+        {: RESULT = "int"; :}
+    |
+    UINT
+        {: RESULT = "uint"; :}
+    |
+    UNSIGNED
+        {: RESULT = "uint"; :}
+    |
+    UNSIGNED INT
+        {: RESULT = "uint"; :}
+    |
+    UNSIGNED LONG INT
+        {: RESULT = "uint"; :}
+    |
+    UNSIGNED LONG
+        {: RESULT = "uint"; :}
+    |
+    ULONG
+        {: RESULT = "uint"; :}
+    |
+    HYPER
+        {: RESULT = "long"; :}
+    |
+    HYPER INT
+        {: RESULT = "long"; :}
+    |
+    UNSIGNED HYPER
+        {: RESULT = "ulong"; :}
+    |
+    UNSIGNED HYPER INT
+        {: RESULT = "ulong"; :}
+    |
+    UHYPER
+        {: RESULT = "ulong"; :}
+    ;
+
+value ::=
+    INTEGER_LITERAL:lit
+        {: RESULT = lit; :}
+    |
+    IDENTIFIER:id
+        {: RESULT = id; :}
+    ;
