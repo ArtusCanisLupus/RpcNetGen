@@ -340,7 +340,7 @@ public class Parser : TUVienna.CS_CUP.Runtime.lr_parser {
 
     public void ReportError(string message, object info)
     {
-        var msg = new StringBuilder("CsRpcGen: error");
+        var msg = new StringBuilder("RpcNetGen: error");
         if (info is Symbol symbol)
         {
             msg.Append(" in line ");
@@ -355,7 +355,7 @@ public class Parser : TUVienna.CS_CUP.Runtime.lr_parser {
 
     public void ReportError(string message, int line)
     {
-        var msg = new StringBuilder("CsRpcGen: error in line ");
+        var msg = new StringBuilder("RpcNetGen: error in line ");
         msg.Append(line);
         msg.Append(": ");
         msg.Append(message);
@@ -365,7 +365,7 @@ public class Parser : TUVienna.CS_CUP.Runtime.lr_parser {
 
     public void SyntaxError(Symbol cur_token)
     {
-        var msg = new StringBuilder("CsRpcGen: syntax error in line ");
+        var msg = new StringBuilder("RpcNetGen: syntax error in line ");
         msg.Append(cur_token.left);
         Console.WriteLine(msg);
         throw new ParserException();

@@ -6,7 +6,7 @@ using System;
 parser code {:
     public void ReportError(string message, object info)
     {
-        var msg = new StringBuilder("CsRpcGen: error");
+        var msg = new StringBuilder("RpcNetGen: error");
         if (info is Symbol symbol)
         {
             msg.Append(" in line ");
@@ -21,7 +21,7 @@ parser code {:
 
     public void ReportError(string message, int line)
     {
-        var msg = new StringBuilder("CsRpcGen: error in line ");
+        var msg = new StringBuilder("RpcNetGen: error in line ");
         msg.Append(line);
         msg.Append(": ");
         msg.Append(message);
@@ -31,7 +31,7 @@ parser code {:
 
     public void SyntaxError(Symbol cur_token)
     {
-        var msg = new StringBuilder("CsRpcGen: syntax error in line ");
+        var msg = new StringBuilder("RpcNetGen: syntax error in line ");
         msg.Append(cur_token.left);
         Console.WriteLine(msg);
         throw new ParserException();
@@ -133,12 +133,12 @@ compilation_unit ::=
 program_defs_opt ::=
     // Empty
         {:
-            CsRpcGen.SetProgramInfos(new ArrayList());
+            RpcNetGen.SetProgramInfos(new ArrayList());
         :}
     |
     program_defs:progDefs
         {:
-            CsRpcGen.SetProgramInfos(progDefs);
+            RpcNetGen.SetProgramInfos(progDefs);
         :}
     ;
 
@@ -175,8 +175,8 @@ definition ::=
 constant_def ::=
     CONST IDENTIFIER:id EQUAL value:value SEMICOLON
         {:
-            ParsedConst type = new ParsedConst(id, value, CsRpcGen.baseClassname);
-            CsRpcGen.AddElement(id, type);
+            ParsedConst type = new ParsedConst(id, value, RpcNetGen.BaseClassname);
+            RpcNetGen.AddElement(id, type);
         :}
     ;
 
@@ -192,7 +192,7 @@ enum_def ::=
             }
 
             var type = new ParsedEnum(id, elements);
-            CsRpcGen.AddElement(id, type);
+            RpcNetGen.AddElement(id, type);
         :}
     ;
 
@@ -228,13 +228,13 @@ enum_element ::=
     IDENTIFIER:id
         {:
             RESULT = new ParsedConst(id, null);
-            CsRpcGen.AddElement(id, RESULT);
+            RpcNetGen.AddElement(id, RESULT);
         :}
     |
     IDENTIFIER:id EQUAL value:val
         {:
             RESULT = new ParsedConst(id, val);
-            CsRpcGen.AddElement(id, RESULT);
+            RpcNetGen.AddElement(id, RESULT);
         :}
     ;
 
@@ -242,7 +242,7 @@ struct_def ::=
     STRUCT IDENTIFIER:id LBRACE declarations:elements RBRACE SEMICOLON
         {:
             var @struct = new ParsedStruct(id, elements);
-            CsRpcGen.AddElement(id, @struct);
+            RpcNetGen.AddElement(id, @struct);
         :}
     ;
 
@@ -250,7 +250,7 @@ union_def ::=
     UNION IDENTIFIER:id SWITCH LPAREN declaration:descrim RPAREN LBRACE union_cases:elements RBRACE SEMICOLON
         {:
             var uni = new ParsedUnion(id, descrim, elements);
-            CsRpcGen.AddElement(id, uni);
+            RpcNetGen.AddElement(id, uni);
         :}
     ;
 
@@ -288,16 +288,16 @@ union_case ::=
 typedef_def ::=
     TYPEDEF declaration:decl SEMICOLON
         {:
-            CsRpcGen.AddElement(decl.Identifier, decl);
+            RpcNetGen.AddElement(decl.Identifier, decl);
         :}
     ;
 
 program_def ::=
     PROGRAM IDENTIFIER:progId LBRACE version_defs:versions RBRACE EQUAL value:progNumber SEMICOLON
         {:
-            var prog = new ParsedConst(progId, progNumber, CsRpcGen.baseClassname);
+            var prog = new ParsedConst(progId, progNumber, Program.BaseClassname);
             RESULT = new ParsedProgramInfo(progId, progNumber, versions);
-            CsRpcGen.AddElement(progId, prog);
+            Program.AddElement(progId, prog);
         :}
     ;
 
@@ -318,9 +318,9 @@ version_defs ::=
 version_def ::=
     VERSION IDENTIFIER:versId LBRACE procedure_defs:procs RBRACE EQUAL value:versNumber SEMICOLON
         {:
-            var vers = new ParsedConst(versId, versNumber, CsRpcGen.baseClassname);
+            var vers = new ParsedConst(versId, versNumber, Program.BaseClassname);
             RESULT = new ParsedVersionInfo(versId, versNumber, procs);
-            CsRpcGen.AddElement(versId, vers);
+            Program.AddElement(versId, vers);
             versNumber = vers.ResolveValue();
             if (versNumber == null)
             {
@@ -333,8 +333,8 @@ version_def ::=
             {
                 var procInfo = (ParsedProcedureInfo)procs[idx];
                 procInfo.ProcedureId += "_" + versNumber;
-                var proc = new ParsedConst(procInfo.ProcedureId, procInfo.ProcedureNumber, CsRpcGen.baseClassname);
-                CsRpcGen.AddElement(procInfo.ProcedureId, proc);
+                var proc = new ParsedConst(procInfo.ProcedureId, procInfo.ProcedureNumber, Program.BaseClassname);
+                Program.AddElement(procInfo.ProcedureId, proc);
             }
         :}
     ;
