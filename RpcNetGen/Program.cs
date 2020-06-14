@@ -191,9 +191,10 @@ namespace RpcNetGen
             return null;
         }
 
-        private static EnDecodingInfo BaseEnDecodingSyllable(ParsedDeclaration decl, bool encode)
+        private static WriteReadOptions BaseEnDecodingSyllable(ParsedDeclaration decl, bool encode)
         {
-            string syllable = decl.DataType;
+            string writeFunction = "Write";
+            string readFunction = "Read" + decl.DataType;
             bool isBase = false;
             // Check for C# base data types... if a match is found, then convert the data type name, so that it
             // becomes a valid syllable for use with XDR en-/decoding functions XdrEncodingXXX() etc. Example: "int" -->
@@ -207,7 +208,7 @@ namespace RpcNetGen
             if (_baseTypes.TryGetValue(type, out string baseType))
             {
                 isBase = true;
-                syllable = baseType;
+                readFunction = "Read" + baseType;
             }
 
             bool isEnum = false;
@@ -216,7 +217,7 @@ namespace RpcNetGen
             {
                 isBase = true;
                 isEnum = true;
-                syllable = "Int";
+                readFunction = "ReadInt";
             }
 
             if (!isBase)
@@ -224,36 +225,43 @@ namespace RpcNetGen
                 return null;
             }
 
-            string encodingOpts = null;
-            string decodingOpts = null;
+            string writeAppendix = null;
+            string readAppendix = null;
             if (decl.Kind == DeclarationType.FixedVector || decl.Kind == DeclarationType.DynamicVector)
             {
                 if (decl.DataType == "opaque")
                 {
                     if (decl.Kind == DeclarationType.FixedVector)
                     {
-                        encodingOpts = CheckForConstant(decl.Size);
-                        decodingOpts = CheckForConstant(decl.Size);
-                        syllable = "FixedLengthOpaque";
+                        writeAppendix = $".AsSpan<byte>(0, {CheckForConstant(decl.Size)})";
+                        readAppendix = CheckForConstant(decl.Size);
+                        writeFunction = "WriteFixedLengthOpaque";
                     }
                     else
                     {
-                        syllable = "VariableLengthOpaque";
+                        writeFunction = "WriteVariableLengthOpaque";
                     }
+
+                    readFunction = "ReadOpaque";
                 }
                 else if (decl.DataType != "string")
                 {
                     if (decl.Kind == DeclarationType.FixedVector)
                     {
-                        encodingOpts = CheckForConstant(decl.Size);
-                        decodingOpts = CheckForConstant(decl.Size);
+                        writeAppendix = $".AsSpan<{decl.DataType.ToLower()}>(0, {CheckForConstant(decl.Size)})";
+                        readAppendix = CheckForConstant(decl.Size);
+                        writeFunction = "WriteFixedLengthArray";
+                    }
+                    else
+                    {
+                        writeFunction = "WriteVariableLengthArray";
                     }
 
-                    syllable += "Vector";
+                    readFunction += "Array";
                 }
             }
 
-            return new EnDecodingInfo(syllable, encodingOpts, decodingOpts, isEnum);
+            return new WriteReadOptions(writeFunction, readFunction, writeAppendix, readAppendix, isEnum);
         }
 
         private static string CodingMethod(ParsedDeclaration decl, bool encode, string outerRef = null)
@@ -264,7 +272,7 @@ namespace RpcNetGen
                 return string.Empty;
             }
 
-            EnDecodingInfo data = BaseEnDecodingSyllable(decl, encode);
+            WriteReadOptions data = BaseEnDecodingSyllable(decl, encode);
 
             string identifier = decl.Identifier;
             if (!string.IsNullOrWhiteSpace(outerRef))
@@ -300,38 +308,29 @@ namespace RpcNetGen
             return encode ? EncodeVector(decl, identifier) : DecodeVector(decl, identifier);
         }
 
-        private static string EncodeScalarEnum(EnDecodingInfo data, string identifier)
+        private static string EncodeScalarEnum(WriteReadOptions data, string identifier)
         {
             var code = new StringBuilder();
-            code.Append("        writer.Write");
-            code.Append(data.Syllable);
+            code.Append("        writer.");
+            code.Append(data.WriteFunction);
             code.Append("((int)");
             code.Append(identifier);
-            if (data.EncodingOptions != null)
-            {
-                code.Append(", ");
-                code.Append(data.EncodingOptions);
-            }
-
+            code.Append(data.WriteAppendix);
             code.AppendLine(");");
             return code.ToString();
         }
 
-        private static string DecodeScalarEnum(ParsedDeclaration decl, string identifier, EnDecodingInfo data)
+        private static string DecodeScalarEnum(ParsedDeclaration decl, string identifier, WriteReadOptions data)
         {
             var code = new StringBuilder();
             code.Append("        ");
             code.Append(identifier);
             code.Append(" = (");
             code.Append(decl.DataType);
-            code.Append(")reader.Read");
-            code.Append(data.Syllable);
+            code.Append(")reader.");
+            code.Append(data.ReadFunction);
             code.Append("(");
-            if (data.DecodingOptions != null)
-            {
-                code.Append(data.DecodingOptions);
-            }
-
+            code.Append(data.ReadAppendix);
             code.AppendLine(");");
             return code.ToString();
         }
@@ -353,10 +352,10 @@ namespace RpcNetGen
             code.Append("; ");
             if (decl.Kind == DeclarationType.DynamicVector)
             {
-                code.Append("writer.WriteInt(_size); ");
+                code.Append("writer.Write(_size); ");
             }
 
-            code.Append("for (int _idx = 0; _idx < _size; _idx++) { writer.WriteInt((int)");
+            code.Append("for (int _idx = 0; _idx < _size; _idx++) { writer.Write((int)");
             code.Append(identifier);
             code.AppendLine("[_idx]); } }");
             return code.ToString();
@@ -382,36 +381,27 @@ namespace RpcNetGen
             return code.ToString();
         }
 
-        private static string EncodeScalarBaseType(EnDecodingInfo data, string identifier)
+        private static string EncodeScalarBaseType(WriteReadOptions data, string identifier)
         {
             var code = new StringBuilder();
-            code.Append("        writer.Write");
-            code.Append(data.Syllable);
+            code.Append("        writer.");
+            code.Append(data.WriteFunction);
             code.Append("(");
             code.Append(identifier);
-            if (data.EncodingOptions != null)
-            {
-                code.Append(", ");
-                code.Append(data.EncodingOptions);
-            }
-
+            code.Append(data.WriteAppendix);
             code.AppendLine(");");
             return code.ToString();
         }
 
-        private static string DecodeScalarBaseType(string identifier, EnDecodingInfo data)
+        private static string DecodeScalarBaseType(string identifier, WriteReadOptions data)
         {
             var code = new StringBuilder();
             code.Append("        ");
             code.Append(identifier);
-            code.Append(" = reader.Read");
-            code.Append(data.Syllable);
+            code.Append(" = reader.");
+            code.Append(data.ReadFunction);
             code.Append("(");
-            if (data.DecodingOptions != null)
-            {
-                code.Append(data.DecodingOptions);
-            }
-
+            code.Append(data.ReadAppendix);
             code.AppendLine(");");
             return code.ToString();
         }
@@ -442,9 +432,9 @@ namespace RpcNetGen
             code.Append("        ");
             code.Append("if (");
             code.Append(identifier);
-            code.Append(" != null) { writer.WriteBool(true); ");
+            code.Append(" != null) { writer.Write(true); ");
             code.Append(identifier);
-            code.AppendLine(".WriteTo(writer); } else { writer.WriteBool(false); }");
+            code.AppendLine(".WriteTo(writer); } else { writer.Write(false); }");
             return code.ToString();
         }
 
@@ -478,7 +468,7 @@ namespace RpcNetGen
             if (decl.Kind == DeclarationType.DynamicVector)
             {
                 // Dynamic array size. So we need to encode size information
-                code.Append("writer.WriteInt(_size); ");
+                code.Append("writer.Write(_size); ");
             }
 
             // Now encode all elements
@@ -600,7 +590,7 @@ namespace RpcNetGen
                 }
 
                 _outputFile.WriteLine($"                current = current.{s.Elements[s.Elements.Count - 1].Identifier};");
-                _outputFile.WriteLine("                writer.WriteBool(current != null);");
+                _outputFile.WriteLine("                writer.Write(current != null);");
                 _outputFile.WriteLine("            } while (current != null);");
             }
             else
@@ -1127,28 +1117,9 @@ namespace RpcNetGen
 
             _outputFile.WriteLine($"    internal class {clientClass} : ClientStub");
             _outputFile.WriteLine("    {");
-            _outputFile.WriteLine($"        public {clientClass}(IPAddress ipAddress) :");
             _outputFile.WriteLine(
-                $"            base(ipAddress, 0, {ConstantsClassname}.{programInfo.ProgramId}, {ConstantsClassname}.{version.VersionId})");
-            _outputFile.WriteLine("        {");
-            _outputFile.WriteLine("        }");
-            _outputFile.WriteLine();
-            _outputFile.WriteLine(
-                $"        public {clientClass}(IPAddress ipAddress, int port) :");
-            _outputFile.WriteLine(
-                $"            base(ipAddress, port, {ConstantsClassname}.{programInfo.ProgramId}, {ConstantsClassname}.{version.VersionId})");
-            _outputFile.WriteLine("        {");
-            _outputFile.WriteLine("        }");
-            _outputFile.WriteLine();
-            _outputFile.WriteLine(
-                $"        public {clientClass}(IPAddress ipAddress, int program, int version) :");
-            _outputFile.WriteLine("            base(ipAddress, 0, program, version)");
-            _outputFile.WriteLine("        {");
-            _outputFile.WriteLine("        }");
-            _outputFile.WriteLine();
-            _outputFile.WriteLine(
-                $"        public {clientClass}(IPAddress ipAddress, int port, int program, int version) :");
-            _outputFile.WriteLine("            base(ipAddress, port, program, version)");
+                $"        public {clientClass}(Protocol protocol, IPAddress ipAddress, int port = 0) :");
+            _outputFile.WriteLine($"            base(protocol, ipAddress, port, {ConstantsClassname}.{programInfo.ProgramId}, {ConstantsClassname}.{version.VersionId})");
             _outputFile.WriteLine("        {");
             _outputFile.WriteLine("        }");
 
@@ -1336,15 +1307,7 @@ namespace RpcNetGen
             _outputFile.WriteLine();
             _outputFile.WriteLine($"    internal abstract class {serverClass} : ServerStub");
             _outputFile.WriteLine("    {");
-            _outputFile.WriteLine($"        public {serverClass}() : this(0)");
-            _outputFile.WriteLine("        {");
-            _outputFile.WriteLine("        }");
-            _outputFile.WriteLine();
-            _outputFile.WriteLine($"        public {serverClass}(int port) : this(IPAddress.Any, port)");
-            _outputFile.WriteLine("        {");
-            _outputFile.WriteLine("        }");
-            _outputFile.WriteLine();
-            _outputFile.WriteLine($"        public {serverClass}(IPAddress ipAddress, int port) :");
+            _outputFile.WriteLine($"        public {serverClass}(IPAddress ipAddress, int port = 0) :");
             _outputFile.WriteLine(
                 $"            base(ipAddress, port, {ConstantsClassname}.{programInfo.ProgramId}, new[] {{ {versions} }})");
             _outputFile.WriteLine("        {");
@@ -1559,19 +1522,21 @@ namespace RpcNetGen
             More
         }
 
-        private class EnDecodingInfo
+        private class WriteReadOptions
         {
-            public EnDecodingInfo(string syllable, string encodingOptions, string decodingOptions, bool isEnum)
+            public WriteReadOptions(string writeFunction, string readFunction, string writeAppendix, string readAppendix, bool isEnum)
             {
-                Syllable = syllable;
-                EncodingOptions = encodingOptions;
-                DecodingOptions = decodingOptions;
+                WriteFunction = writeFunction;
+                ReadFunction = readFunction;
+                WriteAppendix = writeAppendix ?? string.Empty;
+                ReadAppendix = readAppendix ?? string.Empty;
                 IsEnum = isEnum;
             }
 
-            public string Syllable { get; }
-            public string EncodingOptions { get; }
-            public string DecodingOptions { get; }
+            public string WriteFunction { get; }
+            public string ReadFunction { get; }
+            public string WriteAppendix { get; }
+            public string ReadAppendix { get; }
             public bool IsEnum { get; }
         }
     }
