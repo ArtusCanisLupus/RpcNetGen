@@ -1119,7 +1119,7 @@ namespace RpcNetGen
             _outputFile.WriteLine("    {");
             _outputFile.WriteLine(
                 $"        public {clientClass}(Protocol protocol, IPAddress ipAddress, int port = 0) :");
-            _outputFile.WriteLine($"            base(protocol, ipAddress, port, {ConstantsClassname}.{programInfo.ProgramId}, {ConstantsClassname}.{version.VersionId})");
+            _outputFile.WriteLine($"            base(protocol, ipAddress, port, {ConstantsClassname}.{programInfo.ProgramId})");
             _outputFile.WriteLine("        {");
             _outputFile.WriteLine("        }");
 
