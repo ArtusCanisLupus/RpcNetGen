@@ -233,6 +233,7 @@ namespace RpcNetGen
                 {
                     if (decl.Kind == DeclarationType.FixedVector)
                     {
+                        writeAppendix = $".AsSpan<byte>(0, {CheckForConstant(decl.Size)})";
                         readAppendix = CheckForConstant(decl.Size);
                         writeFunction = "WriteFixedLengthOpaque";
                     }
@@ -247,6 +248,7 @@ namespace RpcNetGen
                 {
                     if (decl.Kind == DeclarationType.FixedVector)
                     {
+                        writeAppendix = $".AsSpan<{decl.DataType.ToLower()}>(0, {CheckForConstant(decl.Size)})";
                         readAppendix = CheckForConstant(decl.Size);
                         writeFunction = "WriteFixedLengthArray";
                     }
@@ -290,7 +292,7 @@ namespace RpcNetGen
 
             if (data != null)
             {
-                return encode ? EncodeScalarBaseType(data, identifier) : DecodeScalarBaseType(identifier, data, decl.Kind == DeclarationType.FixedVector);
+                return encode ? EncodeScalarBaseType(data, identifier) : DecodeScalarBaseType(identifier, data);
             }
 
             if (decl.Kind == DeclarationType.Scalar)
@@ -389,31 +391,17 @@ namespace RpcNetGen
             return code.ToString();
         }
 
-        private static string DecodeScalarBaseType(string identifier, WriteReadOptions data, bool isFixedVector)
+        private static string DecodeScalarBaseType(string identifier, WriteReadOptions data)
         {
-            if (isFixedVector)
-            {
-                var code = new StringBuilder();
-                code.Append("        ");
-                code.Append("reader.");
-                code.Append(data.ReadFunction);
-                code.Append("(");
-                code.Append(identifier);
-                code.AppendLine(");");
-                return code.ToString();
-            }
-            else
-            {
-                var code = new StringBuilder();
-                code.Append("        ");
-                code.Append(identifier);
-                code.Append(" = reader.");
-                code.Append(data.ReadFunction);
-                code.Append("(");
-                code.Append(data.ReadAppendix);
-                code.AppendLine(");");
-                return code.ToString();
-            }
+            var code = new StringBuilder();
+            code.Append("        ");
+            code.Append(identifier);
+            code.Append(" = reader.");
+            code.Append(data.ReadFunction);
+            code.Append("(");
+            code.Append(data.ReadAppendix);
+            code.AppendLine(");");
+            return code.ToString();
         }
 
         private static string EncodeScalar(string identifier)
@@ -550,15 +538,7 @@ namespace RpcNetGen
                     outputFile.Write("[]");
                 }
 
-                if (d.Kind == DeclarationType.FixedVector)
-                {
-                    outputFile.Write($" {d.Identifier} {{ get; }} = new {CheckForSpecials(d.DataType)}[{d.Size}];");
-                }
-                else
-                {
-                    outputFile.Write($" {d.Identifier} {{ get; set; }}");
-                }
-
+                outputFile.Write($" {d.Identifier} {{ get; set; }}");
                 if (d.DataType.Equals("string"))
                 {
                     outputFile.Write(" = \"\";");
@@ -1112,7 +1092,7 @@ namespace RpcNetGen
             outputFile.WriteLine("    {");
             outputFile.WriteLine($"        public {clientClass}(Protocol protocol, IPAddress ipAddress, int port = 0, ILogger logger = null) :");
             outputFile.WriteLine(
-                $"            base(protocol, ipAddress, port, {ConstantsClassname}.{programInfo.ProgramId}, {ConstantsClassname}.{version.VersionId}, logger)");
+                $"            base(protocol, ipAddress, port, {ConstantsClassname}.{programInfo.ProgramId}, logger)");
             outputFile.WriteLine("        {");
             outputFile.WriteLine("        }");
 
