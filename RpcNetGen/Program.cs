@@ -1293,8 +1293,8 @@ namespace RpcNetGen
             outputFile.Write("\n");
             outputFile.Write($"    internal abstract class {serverClass} : ServerStub\n");
             outputFile.Write("    {\n");
-            outputFile.Write($"        public {serverClass}(IPAddress ipAddress, int port = 0, ILogger logger = null) :\n");
-            outputFile.Write($"            base(ipAddress, port, {ConstantsClassname}.{programInfo.ProgramId}, new[] {{ {versions} }}, logger)\n");
+            outputFile.Write($"        public {serverClass}(Protocols protocols, IPAddress ipAddress, int port = 0, ILogger logger = null) :\n");
+            outputFile.Write($"            base(protocols, ipAddress, port, {ConstantsClassname}.{programInfo.ProgramId}, new[] {{ {versions} }}, logger)\n");
             outputFile.Write("        {\n");
             outputFile.Write("        }\n");
 
