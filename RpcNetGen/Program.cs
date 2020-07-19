@@ -36,6 +36,7 @@ namespace RpcNetGen
         private static string @namespace;
         private static StreamWriter outputFile;
         private static string outputFilePath;
+        private static string visibility = "internal";
 
         private static List<ParsedProgramInfo> programInfos;
 
@@ -59,6 +60,7 @@ namespace RpcNetGen
             Console.WriteLine("where options include:");
             Console.WriteLine("  -o <output file> specify output file");
             Console.WriteLine("  -n <namespace>   specify namespace for output file");
+            Console.WriteLine("  -p               generate public types instead of internals");
             Console.WriteLine("  -? -help         print this help message and exit");
             Console.WriteLine();
         }
@@ -139,7 +141,7 @@ namespace RpcNetGen
         private static void DumpConstants()
         {
             outputFile.Write("\n");
-            outputFile.Write("    internal static class " + ConstantsClassname + "\n");
+            outputFile.Write($"    {visibility} static class {ConstantsClassname}\n");
             outputFile.Write("    {\n");
             foreach (ParsedElementBase parsedElement in GlobalIdentifiers.Values)
             {
@@ -160,7 +162,7 @@ namespace RpcNetGen
         private static void DumpEnum(ParsedEnum e)
         {
             outputFile.Write("\n");
-            outputFile.Write($"    internal enum {e.Identifier}\n");
+            outputFile.Write($"    {visibility} enum {e.Identifier}\n");
             outputFile.Write("    {\n");
             foreach (ParsedConst enumElement in e.EnumElements)
             {
@@ -535,7 +537,7 @@ namespace RpcNetGen
         private static void DumpStruct(ParsedStruct s)
         {
             outputFile.Write("\n");
-            outputFile.Write($"    internal partial class {s.Identifier} : IXdrReadable, IXdrWritable\n");
+            outputFile.Write($"    {visibility} partial class {s.Identifier} : IXdrReadable, IXdrWritable\n");
             outputFile.Write("    {\n");
 
             // Generate declarations of all members of this XDR struct. This the perfect place to also update the hash
@@ -647,7 +649,7 @@ namespace RpcNetGen
         private static void DumpUnion(ParsedUnion u)
         {
             outputFile.Write("\n");
-            outputFile.Write($"    internal partial class {u.Identifier} : IXdrReadable, IXdrWritable\n");
+            outputFile.Write($"    {visibility} partial class {u.Identifier} : IXdrReadable, IXdrWritable\n");
             outputFile.Write("    {\n");
 
             // Note that the descriminant can not be of an array type, string, etc. so we don't have to handle all the
@@ -847,7 +849,7 @@ namespace RpcNetGen
         private static void DumpTypedef(ParsedDeclaration d)
         {
             outputFile.Write("\n");
-            outputFile.Write($"    internal partial class {d.Identifier} : IXdrReadable, IXdrWritable\n");
+            outputFile.Write($"    {visibility} partial class {d.Identifier} : IXdrReadable, IXdrWritable\n");
             outputFile.Write("    {\n");
             string paramType = CheckForSpecials(d.DataType);
             if (((d.Kind == DeclarationType.FixedVector) || (d.Kind == DeclarationType.DynamicVector)) && !d.DataType.Equals("string"))
@@ -1107,7 +1109,7 @@ namespace RpcNetGen
 
             outputFile.Write("\n");
 
-            outputFile.Write($"    internal class {clientClass} : ClientStub\n");
+            outputFile.Write($"    {visibility} class {clientClass} : ClientStub\n");
             outputFile.Write("    {\n");
             outputFile.Write($"        public {clientClass}(Protocol protocol, IPAddress ipAddress, int port = 0, ILogger logger = null) :\n");
             outputFile.Write(
@@ -1291,7 +1293,7 @@ namespace RpcNetGen
             string versions = string.Join(", ", programInfo.Versions.Select(version => ConstantsClassname + "." + version.VersionId));
 
             outputFile.Write("\n");
-            outputFile.Write($"    internal abstract class {serverClass} : ServerStub\n");
+            outputFile.Write($"    {visibility} abstract class {serverClass} : ServerStub\n");
             outputFile.Write("    {\n");
             outputFile.Write($"        public {serverClass}(Protocols protocols, IPAddress ipAddress, int port = 0, ILogger logger = null) :\n");
             outputFile.Write($"            base(protocols, ipAddress, port, {ConstantsClassname}.{programInfo.ProgramId}, new[] {{ {versions} }}, logger)\n");
@@ -1420,6 +1422,9 @@ namespace RpcNetGen
                         }
 
                         @namespace = args[argIdx];
+                        break;
+                    case "-p":
+                        visibility = "public";
                         break;
                     case "-version":
                         Console.WriteLine("RpcNetGen version \"" + Version + "\"");
