@@ -455,7 +455,7 @@ namespace RpcNetGen
             var code = new StringBuilder();
             code.Append("        ");
             code.Append(identifier);
-            code.Append(" = read.ReadBool() ? new ");
+            code.Append(" = reader.ReadBool() ? new ");
             code.Append(decl.DataType);
             code.Append("(reader) : null;\n");
             return code.ToString();
@@ -1111,9 +1111,9 @@ namespace RpcNetGen
 
             outputFile.Write($"    {visibility} class {clientClass} : ClientStub\n");
             outputFile.Write("    {\n");
-            outputFile.Write($"        public {clientClass}(Protocol protocol, IPAddress ipAddress, int port = 0, ILogger logger = null) :\n");
+            outputFile.Write($"        public {clientClass}(Protocol protocol, IPAddress ipAddress, ClientSettings clientSettings = default) :\n");
             outputFile.Write(
-                $"            base(protocol, ipAddress, port, {ConstantsClassname}.{programInfo.ProgramId}, {ConstantsClassname}.{version.VersionId}, logger)\n");
+                $"            base(protocol, ipAddress, {ConstantsClassname}.{programInfo.ProgramId}, {ConstantsClassname}.{version.VersionId}, clientSettings)\n");
             outputFile.Write("        {\n");
             outputFile.Write("        }\n");
 
@@ -1219,7 +1219,7 @@ namespace RpcNetGen
                     ParsedDeclaration paramInfo = proc.Parameters[0];
                     outputFile.Write($"                        var args = new {paramInfo.DataType}();\n");
                     outputFile.Write("                        call.RetrieveCall(args);\n");
-                    @params = "call.RemoteIpEndPoint, args";
+                    @params = "call.Caller, args";
                     break;
                 }
 
@@ -1229,7 +1229,7 @@ namespace RpcNetGen
                     outputFile.Write($"                        var args = new Arguments_{proc.ProcedureNumber}();\n");
                     outputFile.Write("                        call.RetrieveCall(args);\n");
                     var paramsBuff = new StringBuilder();
-                    paramsBuff.Append("call.RemoteIpEndPoint");
+                    paramsBuff.Append("call.Caller");
 
                     foreach (ParsedDeclaration parameter in proc.Parameters)
                     {
@@ -1273,7 +1273,7 @@ namespace RpcNetGen
             foreach (ParsedProcedureInfo procedure in versionInfo.Procedures)
             {
                 string resultType = CheckForSpecials(procedure.ResultType);
-                outputFile.Write($"        public abstract {resultType} {procedure.ProcedureId}(IPEndPoint remoteIpEndPoint");
+                outputFile.Write($"        public abstract {resultType} {procedure.ProcedureId}(Caller caller");
                 foreach (ParsedDeclaration parameter in procedure.Parameters)
                 {
                     outputFile.Write(", ");
@@ -1295,8 +1295,8 @@ namespace RpcNetGen
             outputFile.Write("\n");
             outputFile.Write($"    {visibility} abstract class {serverClass} : ServerStub\n");
             outputFile.Write("    {\n");
-            outputFile.Write($"        public {serverClass}(Protocols protocols, IPAddress ipAddress, int port = 0, ILogger logger = null) :\n");
-            outputFile.Write($"            base(protocols, ipAddress, port, {ConstantsClassname}.{programInfo.ProgramId}, new[] {{ {versions} }}, logger)\n");
+            outputFile.Write($"        public {serverClass}(Protocol protocol, IPAddress ipAddress, ServerSettings serverSettings = default) :\n");
+            outputFile.Write($"            base(protocol, ipAddress, {ConstantsClassname}.{programInfo.ProgramId}, new[] {{ {versions} }}, serverSettings)\n");
             outputFile.Write("        {\n");
             outputFile.Write("        }\n");
 
@@ -1322,7 +1322,7 @@ namespace RpcNetGen
 
             // Now generate dispatcher code using the previously generated structs where applicable
             outputFile.Write("\n");
-            outputFile.Write("        protected override void DispatchReceivedCall(ReceivedCall call)\n");
+            outputFile.Write("        protected override void DispatchReceivedCall(ReceivedRpcCall call)\n");
             outputFile.Write("        {\n");
             bool first = true;
             foreach (ParsedVersionInfo versionInfo in programInfo.Versions)
