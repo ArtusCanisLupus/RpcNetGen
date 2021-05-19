@@ -923,7 +923,7 @@ namespace RpcNetGen
                 ParameterKind parameterKind;
                 if ((parametersCount > 1) || (parametersCount == 0) || IsBaseType(proc.Parameters[0].DataType) || IsEnum(proc.Parameters[0].DataType))
                 {
-                    paramClassName = "Arguments_" + proc.ProcedureNumber;
+                    paramClassName = $"Arguments_{versionInfo.VersionNumber}_{proc.ProcedureNumber}";
                     DumpClientArgumentStruct(proc, paramClassName);
                     parameterKind = ParameterKind.More;
                 }
@@ -936,7 +936,7 @@ namespace RpcNetGen
                 string resultClassName;
                 if (IsBaseType(proc.ResultType) || IsEnum(proc.ResultType))
                 {
-                    resultClassName = "Result_" + proc.ProcedureNumber;
+                    resultClassName = $"Result_{versionInfo.VersionNumber}_{proc.ProcedureNumber}";
                     DumpClientResultStruct(proc, resultClassName);
                 }
                 else
@@ -1127,10 +1127,10 @@ namespace RpcNetGen
             outputFile.Write("    }\n");
         }
 
-        private static void DumpServerArgumentStruct(ParsedProcedureInfo proc)
+        private static void DumpServerArgumentStruct(ParsedProcedureInfo proc, ParsedVersionInfo versionInfo)
         {
             outputFile.Write("\n");
-            outputFile.Write($"        private class Arguments_{proc.ProcedureNumber} : IXdrReadable\n");
+            outputFile.Write($"        private class Arguments_{versionInfo.VersionNumber}_{proc.ProcedureNumber} : IXdrReadable\n");
             outputFile.Write("        {\n");
             foreach (ParsedDeclaration parameter in proc.Parameters)
             {
@@ -1156,10 +1156,10 @@ namespace RpcNetGen
             outputFile.Write("        }\n");
         }
 
-        private static void DumpServerResultStruct(ParsedProcedureInfo proc)
+        private static void DumpServerResultStruct(ParsedProcedureInfo proc, ParsedVersionInfo versionInfo)
         {
             outputFile.Write("\n");
-            outputFile.Write($"        private class Result_{proc.ProcedureNumber} : IXdrWritable\n");
+            outputFile.Write($"        private class Result_{versionInfo.VersionNumber}_{proc.ProcedureNumber} : IXdrWritable\n");
             outputFile.Write("        {\n");
             if (!IsVoid(proc.ResultType))
             {
@@ -1179,7 +1179,7 @@ namespace RpcNetGen
             outputFile.Write("        }\n");
         }
 
-        private static void DumpServerStubMethodCall(ParsedProcedureInfo proc)
+        private static void DumpServerStubMethodCall(ParsedProcedureInfo proc, ParsedVersionInfo versionInfo)
         {
             // Check for special return types, like enumerations, which we map to their corresponding C# base data type
             string resultType = CheckForSpecials(proc.ResultType);
@@ -1226,7 +1226,7 @@ namespace RpcNetGen
                 default:
                 {
                     // We only need to refer to the struct here, we don't declare it as that isn't valid C# syntax
-                    outputFile.Write($"                        var args = new Arguments_{proc.ProcedureNumber}();\n");
+                    outputFile.Write($"                        var args = new Arguments_{versionInfo.VersionNumber}_{proc.ProcedureNumber}();\n");
                     outputFile.Write("                        call.RetrieveCall(args);\n");
                     var paramsBuff = new StringBuilder();
                     paramsBuff.Append("call.Caller");
@@ -1250,13 +1250,13 @@ namespace RpcNetGen
                 // It's a remote procedure, so it does return simply nothing. We use the singleton Void to return a
                 // "nothing"
                 outputFile.Write($"                        {proc.ProcedureId}({@params});\n");
-                outputFile.Write($"                        call.Reply(new Result_{proc.ProcedureNumber}());\n");
+                outputFile.Write($"                        call.Reply(new Result_{versionInfo.VersionNumber}_{proc.ProcedureNumber}());\n");
             }
             else if (IsBaseType(resultType))
             {
                 // The return type is some C# base data type, so we need to wrap the return value before we can
                 // serialize it
-                outputFile.Write($"                        var result = new Result_{proc.ProcedureNumber}();\n");
+                outputFile.Write($"                        var result = new Result_{versionInfo.VersionNumber}_{proc.ProcedureNumber}();\n");
                 outputFile.Write($"                        result.Value = {proc.ProcedureId}({@params});\n");
                 outputFile.Write("                        call.Reply(result);\n");
             }
@@ -1310,12 +1310,12 @@ namespace RpcNetGen
                         IsBaseType(procedure.Parameters[0].DataType) ||
                         IsEnum(procedure.Parameters[0].DataType))
                     {
-                        DumpServerArgumentStruct(procedure);
+                        DumpServerArgumentStruct(procedure, versionInfo);
                     }
 
                     if (IsBaseType(procedure.ResultType) || IsEnum(procedure.ResultType))
                     {
-                        DumpServerResultStruct(procedure);
+                        DumpServerResultStruct(procedure, versionInfo);
                     }
                 }
             }
@@ -1348,7 +1348,7 @@ namespace RpcNetGen
                     // be a constant coming from an enumeration: in this case we need also to dump the enclosure
                     outputFile.Write($"                    case {ConstantsClassname}.{procInfo.ProcedureId}:\n");
                     outputFile.Write("                    {\n");
-                    DumpServerStubMethodCall(procInfo);
+                    DumpServerStubMethodCall(procInfo, versionInfo);
                     outputFile.Write("                        break;\n");
                     outputFile.Write("                    }\n");
                 }
